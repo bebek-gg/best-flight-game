@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skyward Run — a 3D flight game</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./css/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.min.js"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<!-- HUD: live instruments over the 3D view -->
+<div id="hud" class="hidden">
+  <div id="hud-top-left">
+    <div id="hud-sortie">SORTIE 1 — RING RUN</div>
+    <div id="hud-objective">Take off from the strip and fly through all 5 sky rings.</div>
+    <div id="hud-rings">RINGS 0/5</div>
+  </div>
+  <div id="hud-top-center">
+    <div id="hud-compass"><span style="left:110px">N</span></div>
+    <div id="hud-heading">000° N</div>
+  </div>
+  <div id="hud-top-right">
+    <div class="hud-box"><span class="hud-label">SCORE</span><span id="hud-score">0</span></div>
+    <div class="hud-box"><span class="hud-label">TIME</span><span id="hud-timer">4:00</span></div>
+  </div>
+  <div id="hud-bottom-left">
+    <canvas id="hud-attitude" width="120" height="120"></canvas>
+    <div class="hud-instruments">
+      <div class="hud-box"><span class="hud-label">ALTITUDE FT</span><span id="hud-alt">0</span></div>
+      <div class="hud-box"><span class="hud-label">SPEED KT</span><span id="hud-speed">0</span></div>
+      <div class="hud-box"><span class="hud-label">VERT FT/MIN</span><span id="hud-vspeed">+0</span></div>
+    </div>
+  </div>
+  <div id="hud-bottom-right">
+    <div class="hud-box"><span class="hud-label">THROTTLE</span><span id="hud-throttle">0%</span>
+      <div class="hud-bar"><div id="hud-throttleBar"></div></div>
+    </div>
+    <div class="hud-box"><span class="hud-label">FUEL</span><span id="hud-fuel">100%</span>
+      <div class="hud-bar"><div id="hud-fuelBar"></div></div>
+    </div>
+  </div>
+  <div id="hud-message"></div>
+</div>
+
+<!-- Start screen -->
+<div id="screen-menu" class="screen">
+  <h1>SKYWARD RUN</h1>
+  <p class="subtitle">Three sorties over the river valley. Fly the rings, race the canyon, bring her home.</p>
+  <div class="panel">
+    <h2>HOW TO FLY</h2>
+    <p><b>W / S</b> or <b>↑ / ↓</b> — pitch up / down &nbsp;·&nbsp; <b>A / D</b> or <b>← / →</b> — bank &amp; turn</p>
+    <p><b>Shift</b> — throttle up &nbsp;·&nbsp; <b>Ctrl / F</b> — throttle down &nbsp;·&nbsp; hold <b>left mouse</b> — steer by pointer</p>
+    <p><b>P</b> — pause &nbsp;·&nbsp; <b>R</b> — restart &nbsp;·&nbsp; <b>M</b> — music on / off &nbsp;·&nbsp; <b>Enter</b> — start</p>
+  </div>
+  <div class="panel">
+    <h2>SORTIES</h2>
+    <p><b>1 · Ring Run</b> — take off and fly through 5 sky rings.</p>
+    <p><b>2 · Canyon Dash</b> — low-level river run against the clock. Low passes pay extra.</p>
+    <p><b>3 · Homecoming</b> — land on the runway, gentle and on the centreline.</p>
+    <p>Watch your fuel. A hard impact ends the sortie.</p>
+  </div>
+  <button id="btn-start" class="big-button">START FLYING</button>
+</div>
+
+<!-- Pause screen -->
+<div id="screen-pause" class="screen hidden">
+  <h1>PAUSED</h1>
+  <p class="subtitle">The valley waits. The fuel does not burn while paused.</p>
+  <button id="btn-resume" class="big-button">RESUME</button>
+  <button id="btn-restart-pause" class="big-button secondary">RESTART SORTIE</button>
+</div>
+
+<!-- End screen: mission complete or crash -->
+<div id="screen-end" class="screen hidden">
+  <h1 id="end-title">SORTIE COMPLETE</h1>
+  <p id="end-body" class="subtitle"></p>
+  <button id="btn-next" class="big-button">NEXT SORTIE</button>
+</div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,269 @@
+/* Skyward Run — style.css
+   One clear job: how the game looks outside the 3D view. The HUD overlay
+   (instruments, compass, bars, messages) and the full-screen menu, pause
+   and end screens. Dark glass panels, amber accents, readable at a glance. */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0b1c2c;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: #f2f2e8;
+}
+
+#game-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hidden { display: none !important; }
+
+/* --- HUD ---------------------------------------------------------------- */
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  font-size: 15px;
+}
+
+#hud-top-left, #hud-top-center, #hud-top-right,
+#hud-bottom-left, #hud-bottom-right {
+  position: absolute;
+}
+
+#hud-top-left { top: 14px; left: 16px; }
+#hud-top-center { top: 12px; left: 50%; transform: translateX(-50%); text-align: center; }
+#hud-top-right { top: 14px; right: 16px; text-align: right; }
+#hud-bottom-left { bottom: 16px; left: 16px; display: flex; gap: 12px; align-items: flex-end; }
+#hud-bottom-right { bottom: 16px; right: 16px; text-align: right; }
+
+#hud-sortie {
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-size: 15px;
+  color: #ffd24a;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+#hud-objective {
+  margin-top: 4px;
+  max-width: 380px;
+  font-size: 13px;
+  color: #e8f0f5;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+#hud-rings {
+  margin-top: 6px;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: #9fd8ef;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+#hud-compass {
+  position: relative;
+  width: 220px;
+  height: 26px;
+  overflow: hidden;
+  background: rgba(8, 20, 32, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+}
+
+#hud-compass span {
+  position: absolute;
+  top: 3px;
+  transform: translateX(-50%);
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+#hud-compass::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #ffd24a;
+}
+
+#hud-heading {
+  margin-top: 4px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.hud-box {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 6px 10px;
+  background: rgba(8, 20, 32, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+  min-width: 92px;
+}
+
+.hud-box .hud-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: #9fd8ef;
+}
+
+.hud-box span:last-child {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+#hud-timer.low, #hud-fuelBar.low { color: #ff5a4a; }
+
+.hud-bar {
+  width: 100%;
+  height: 6px;
+  margin-top: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.hud-bar div {
+  height: 100%;
+  width: 0%;
+  background: #ffd24a;
+  transition: width 0.15s linear;
+}
+
+#hud-fuelBar { background: #37c978; }
+#hud-fuelBar.low { background: #ff5a4a; }
+
+#hud-attitude {
+  width: 120px;
+  height: 120px;
+  background: rgba(8, 20, 32, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+}
+
+.hud-instruments .hud-box { margin-left: 0; margin-right: 8px; }
+
+#hud-message {
+  position: absolute;
+  top: 22%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #ffd24a;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* --- Full screens -------------------------------------------------------- */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  overflow-y: auto;
+  background: radial-gradient(ellipse at center, rgba(10, 28, 44, 0.55) 0%, rgba(6, 16, 26, 0.88) 100%);
+  text-align: center;
+}
+
+/* Short windows: shrink the title and tighten the gaps so every button stays
+   reachable without scrolling far. */
+@media (max-height: 560px) {
+  .screen { gap: 8px; padding: 12px; justify-content: flex-start; }
+  .screen h1 { font-size: 38px; letter-spacing: 6px; }
+  .screen .subtitle { font-size: 14px; }
+  .screen .panel { padding: 8px 14px; font-size: 12px; }
+  .big-button { padding: 10px 30px; font-size: 16px; }
+}
+
+.screen h1 {
+  margin: 0;
+  font-size: 64px;
+  letter-spacing: 10px;
+  font-weight: 800;
+  color: #ffd24a;
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.7);
+}
+
+.screen .subtitle {
+  margin: 0;
+  max-width: 620px;
+  font-size: 17px;
+  line-height: 1.5;
+  color: #dfe9ef;
+  white-space: pre-line;
+}
+
+.screen .panel {
+  max-width: 620px;
+  padding: 14px 22px;
+  background: rgba(8, 20, 32, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.screen .panel h2 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: #9fd8ef;
+}
+
+.screen .panel p { margin: 4px 0; }
+.screen .panel b { color: #ffd24a; }
+
+.big-button {
+  margin-top: 6px;
+  padding: 14px 42px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #1a1206;
+  background: #ffd24a;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+
+.big-button:hover { background: #ffdd70; }
+
+.big-button.secondary {
+  background: transparent;
+  color: #f2f2e8;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  box-shadow: none;
+}
+
+#end-body { font-size: 18px; }
