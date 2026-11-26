@@ -96,6 +96,10 @@ export class ChaseCamera {
       .addScaledVector(fwd, 34)
       .add(new THREE.Vector3(0, 1.5, 0));
     this.lookAt.lerp(targetLook, 1 - Math.exp(-dt * 8));
+    // The cockpit camera rolls the camera's up vector with the airframe;
+    // chase view is always level, so restore the world up here or the
+    // horizon stays tilted after switching back from the cockpit.
+    this.camera.up.set(0, 1, 0);
     this.camera.position.copy(this.position);
     this.camera.lookAt(this.lookAt);
     const wantFov = 62 + speedT * 12;
@@ -113,6 +117,55 @@ export class ChaseCamera {
     this.lookAt.copy(aircraft.position).addScaledVector(fwd, 34);
     this.camera.position.copy(this.position);
     this.camera.lookAt(this.lookAt);
+  }
+}
+
+// The cockpit camera: the pilot's seat, just above the canopy glass, looking
+// forward over the nose and the spinning propeller, with the dashboard along
+// the bottom of the frame. It banks with the aircraft (the camera's up
+// vector rolls with it), so a banked turn reads as a banked turn instead of
+// a level view sliding sideways. Fully playable: the flight model, the HUD
+// and the controls are identical in either view; only the eye moves.
+export class CockpitCamera {
+  constructor(camera) {
+    this.camera = camera;
+    this.position = new THREE.Vector3(60, 30, 780);
+    this.lookAt = new THREE.Vector3(60, 30, 700);
+    this.fov = 68;
+  }
+
+  update(aircraft) {
+    // The aircraft mesh rotates YXZ (heading, -pitch, -roll); reuse that
+    // exact orientation for the eye so the view matches the airframe, with
+    // a small 3-degree downward tilt to bring the dashboard into the lower
+    // frame. The eye sits INSIDE the fuselage, above the seat and forward
+    // of it: the fuselage is front-face culled from inside, so the pilot
+    // sees the dashboard and dials as a strip along the bottom, the nose
+    // cone ahead, and the world through the nearly clear canopy glass. An
+    // eye above the fuselage (the previous version) only ever saw the
+    // fuselage top filling the lower half, because the eye sat 0.6 m above
+    // a 3.4 m slab. The eye is forward of the wing's leading edge, so the
+    // wing stays below the frame.
+    const q = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(-aircraft.pitch - 0.05, aircraft.heading, -aircraft.roll, 'YXZ'),
+    );
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+    const eye = new THREE.Vector3(0, 0.65, -1.0).applyQuaternion(q).add(aircraft.position);
+    this.position.copy(eye);
+    this.lookAt.copy(eye).addScaledVector(fwd, 60);
+    this.camera.position.copy(this.position);
+    this.camera.up.copy(up);
+    this.camera.lookAt(this.lookAt);
+    if (Math.abs(this.camera.fov - this.fov) > 0.05) {
+      this.camera.fov = this.fov;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  // Put the eye in place at once (sortie start, screenshot staging).
+  snap(aircraft) {
+    this.update(aircraft);
   }
 }
 

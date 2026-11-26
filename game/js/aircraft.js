@@ -27,11 +27,38 @@ export function buildAircraft() {
   nose.rotation.y = Math.PI / 4;
   nose.position.z = -4.0;
   group.add(nose);
-  // Canopy: a flattened glass dome on top, ahead of the wing.
-  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.62, 10, 8), glass);
+  // Canopy: a flattened glass dome on top, ahead of the wing. The glass is
+  // genuinely transparent, so the cockpit camera (seated just behind it)
+  // sees through it, and from outside the dark seat inside reads as a
+  // pilot silhouette instead of a solid lump.
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.62, 10, 8),
+    // Nearly clear: the cockpit camera looks through this glass, and at
+    // 0.45 opacity it tinted the whole upper view grey-blue from inside.
+    new THREE.MeshLambertMaterial({ color: 0x9fd8ef, transparent: true, opacity: 0.15 }));
   canopy.scale.set(0.9, 0.75, 1.5);
   canopy.position.set(0, 0.85, -1.2);
   group.add(canopy);
+  // Cockpit interior: a dark seat and a dashboard with three glowing dials,
+  // so the cockpit view has instruments in the frame and the chase view
+  // shows a lived-in cockpit through the glass.
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.5), dark);
+  seat.position.set(0, 0.15, 0.4);
+  group.add(seat);
+  // Smaller and lower than the first version: at 1.4 m wide it blocked the
+  // centre of the cockpit view; at 1.0 m it reads as a thin instrument
+  // strip along the bottom of the frame.
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.4, 0.25), dark);
+  dash.position.set(0, 0.2, -2.5);
+  group.add(dash);
+  const dialColours = [0xf2f2e8, 0xffd24a, 0x37c978];
+  for (let i = 0; i < 3; i += 1) {
+    const dial = new THREE.Mesh(
+      new THREE.CircleGeometry(0.1, 12),
+      new THREE.MeshBasicMaterial({ color: dialColours[i] }),
+    );
+    dial.position.set(-0.28 + i * 0.28, 0.2, -2.36);
+    group.add(dial);
+  }
   // Main wing: long, slightly tapered, with white tips.
   const wing = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.28, 2.0), white);
   wing.position.set(0, -0.15, -0.4);
@@ -48,13 +75,17 @@ export function buildAircraft() {
   const fin = new THREE.Mesh(new THREE.BoxGeometry(0.24, 2.0, 1.6), orange);
   fin.position.set(0, 1.05, 3.0);
   group.add(fin);
-  // Propeller: a hub and two blades, spinning in the update.
+  // Propeller: a hub and two blades, spinning in the update. The blades
+  // are short, thin and faint: a full-size solid prop read as huge black
+  // bars sweeping the cockpit view. (A translucent blur disc was tried and
+  // removed — it read as a grey bubble over the whole frame.)
   const prop = new THREE.Group();
   const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.5, 8), dark);
   hub.rotation.x = Math.PI / 2;
   prop.add(hub);
+  const bladeMat = new THREE.MeshLambertMaterial({ color: 0x2e3138, transparent: true, opacity: 0.35 });
   for (const a of [0, Math.PI / 2]) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.32, 4.6, 0.12), dark);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.24, 4.0, 0.12), bladeMat);
     blade.rotation.z = a;
     prop.add(blade);
   }

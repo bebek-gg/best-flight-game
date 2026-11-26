@@ -282,6 +282,177 @@ export function buildVegetation(scene, terrainMesh) {
   return { trees: placed, rocks: rocksPlaced };
 }
 
+// --- Landmarks ---------------------------------------------------------------
+// A small town, a bridge over the river and distant mountains. Every
+// placement draws from the seeded stream in a fixed order, so the layout is
+// identical on every run. The town stays clear of the runway corridor, the
+// ring paths and the river; the bridge deck clears the banks; the mountains
+// ring the horizon far outside the flyable valley.
+
+const TOWN = { x: 300, z: 100 };
+const BRIDGE_Z = 150;
+
+export function buildLandmarks(scene, terrainMesh) {
+  const rng = mulberry32(WORLD_SEED + 1207);
+  if (terrainMesh) sampleMeshHeight(terrainMesh);
+  const group = new THREE.Group();
+  group.name = 'landmarks';
+  const counts = { houses: 0, mountains: 0 };
+
+  // --- Town: instanced walls and pyramid roofs -----------------------------
+  const ringClearings = [...ringPathForSortie(1), ...ringPathForSortie(2)];
+  const nearRing = (x, z) => ringClearings.some((r) => Math.hypot(x - r.x, z - r.z) < 45);
+  const houseCount = 26;
+  const wallGeo = new THREE.BoxGeometry(1, 1, 1);
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const roofGeo = new THREE.ConeGeometry(1, 1, 4);
+  const roofMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const walls = new THREE.InstancedMesh(wallGeo, wallMat, houseCount);
+  const roofs = new THREE.InstancedMesh(roofGeo, roofMat, houseCount);
+  const wallColours = [0xf2e6c9, 0xb56a4a, 0xf4f1e8, 0xe8d9a0, 0xd9c1a3].map((c) => new THREE.Color(c));
+  const roofColours = [0xa34a28, 0x5a6a72, 0x6b4a2b, 0x8a3b2a].map((c) => new THREE.Color(c));
+  const dummy = new THREE.Object3D();
+  let placed = 0;
+  let guard = 0;
+  while (placed < houseCount && guard < 4000) {
+    guard += 1;
+    const x = TOWN.x + (rng() * 2 - 1) * 110;
+    const z = TOWN.z + (rng() * 2 - 1) * 90;
+    if (Math.abs(x - RUNWAY.x) < 70 && Math.abs(z - RUNWAY.z) < 1050) continue;
+    if (nearRing(x, z)) continue;
+    const riverCentre = WORLD.riverX + Math.sin(z * 0.0016) * 90;
+    if (Math.abs(x - riverCentre) < WORLD.riverWidth * 1.6) continue;
+    const mh = meshHeightAt(x, z);
+    if (mh < 6) continue;
+    const slope = Math.max(
+      Math.abs(meshHeightAt(x + 6, z) - meshHeightAt(x - 6, z)) / 12,
+      Math.abs(meshHeightAt(x, z + 6) - meshHeightAt(x, z - 6)) / 12,
+    );
+    if (slope > 0.55) continue;
+    const w = 8 + rng() * 4;
+    const h = 5 + rng() * 2;
+    const d = 7 + rng() * 3;
+    const rot = rng() * Math.PI;
+    dummy.position.set(x, mh + h / 2 - 0.3, z);
+    dummy.scale.set(w, h, d);
+    dummy.rotation.set(0, rot, 0);
+    dummy.updateMatrix();
+    walls.setMatrixAt(placed, dummy.matrix);
+    walls.setColorAt(placed, wallColours[Math.floor(rng() * wallColours.length)]);
+    const roofH = 3 + rng() * 1.5;
+    const roofR = Math.max(w, d) * 0.72;
+    dummy.position.set(x, mh + h - 0.3 + roofH / 2, z);
+    dummy.scale.set(roofR, roofH, roofR);
+    dummy.rotation.set(0, rot + Math.PI / 4, 0);
+    dummy.updateMatrix();
+    roofs.setMatrixAt(placed, dummy.matrix);
+    roofs.setColorAt(placed, roofColours[Math.floor(rng() * roofColours.length)]);
+    placed += 1;
+  }
+  walls.count = placed;
+  roofs.count = placed;
+  if (walls.instanceColor) walls.instanceColor.needsUpdate = true;
+  if (roofs.instanceColor) roofs.instanceColor.needsUpdate = true;
+  group.add(walls);
+  group.add(roofs);
+  counts.houses = placed;
+
+  // --- Church: a taller landmark the pilot can spot from the air -----------
+  const churchX = TOWN.x + 30;
+  const churchZ = TOWN.z - 40;
+  const churchH = meshHeightAt(churchX, churchZ);
+  const church = new THREE.Group();
+  const nave = new THREE.Mesh(
+    new THREE.BoxGeometry(10, 13, 8),
+    new THREE.MeshLambertMaterial({ color: 0xf2e6c9 }),
+  );
+  nave.position.y = 6.5;
+  church.add(nave);
+  const naveRoof = new THREE.Mesh(
+    new THREE.ConeGeometry(7.2, 4.5, 4),
+    new THREE.MeshLambertMaterial({ color: 0x5a6a72 }),
+  );
+  naveRoof.position.y = 13 + 2.25;
+  naveRoof.rotation.y = Math.PI / 4;
+  church.add(naveRoof);
+  const tower = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 18, 4),
+    new THREE.MeshLambertMaterial({ color: 0xf4f1e8 }),
+  );
+  tower.position.set(0, 9, 5.5);
+  church.add(tower);
+  const spire = new THREE.Mesh(
+    new THREE.ConeGeometry(2.9, 6, 4),
+    new THREE.MeshLambertMaterial({ color: 0x8a3b2a }),
+  );
+  spire.position.set(0, 18 + 3, 5.5);
+  spire.rotation.y = Math.PI / 4;
+  church.add(spire);
+  church.position.set(churchX, churchH - 0.3, churchZ);
+  church.rotation.y = 0.4;
+  group.add(church);
+
+  // --- Bridge: a deck across the river with piers and railings -------------
+  // Pale concrete, so the deck reads as a bridge against the valley instead
+  // of a black bar; the deck sits just above the higher bank.
+  const riverCentre = WORLD.riverX + Math.sin(BRIDGE_Z * 0.0016) * 90;
+  const bankL = meshHeightAt(riverCentre - 100, BRIDGE_Z);
+  const bankR = meshHeightAt(riverCentre + 100, BRIDGE_Z);
+  const deckY = Math.max(bankL, bankR) + 2;
+  const bridge = new THREE.Group();
+  const deck = new THREE.Mesh(
+    new THREE.BoxGeometry(210, 1.4, 9),
+    new THREE.MeshLambertMaterial({ color: 0xb5ada0 }),
+  );
+  deck.position.set(riverCentre, deckY, BRIDGE_Z);
+  bridge.add(deck);
+  for (const side of [-1, 1]) {
+    const rail = new THREE.Mesh(
+      new THREE.BoxGeometry(210, 1.1, 0.4),
+      new THREE.MeshLambertMaterial({ color: 0x8a4a2a }),
+    );
+    rail.position.set(riverCentre, deckY + 1.2, BRIDGE_Z + side * 4.3);
+    bridge.add(rail);
+  }
+  for (const px of [-40, 40]) {
+    const pier = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.6, 3.2, deckY - 1, 8),
+      new THREE.MeshLambertMaterial({ color: 0x8f867a }),
+    );
+    pier.position.set(riverCentre + px, (deckY - 1) / 2 + 1, BRIDGE_Z);
+    bridge.add(pier);
+  }
+  group.add(bridge);
+
+  // --- Mountains: a ring of snow-capped peaks on the horizon ----------------
+  // Far outside the flyable valley (radius 2100+), so they never meet the
+  // aircraft; the fog hazes them into pale blue silhouettes, which is
+  // exactly how distant mountains read. Bases sit below the valley rim.
+  const mountainMat = new THREE.MeshLambertMaterial({ color: 0x6a7a8a });
+  const snowMat = new THREE.MeshLambertMaterial({ color: 0xe8eef2 });
+  const peakCount = 10;
+  for (let i = 0; i < peakCount; i += 1) {
+    const angle = (i / peakCount) * Math.PI * 2 + (rng() - 0.5) * 0.45;
+    const radius = 2100 + rng() * 600;
+    const px = Math.cos(angle) * radius;
+    const pz = Math.sin(angle) * radius;
+    const height = 550 + rng() * 400;
+    const baseR = 320 + rng() * 200;
+    const peak = new THREE.Mesh(new THREE.ConeGeometry(baseR, height, 7), mountainMat);
+    peak.position.set(px, -60 + height / 2, pz);
+    peak.rotation.y = rng() * Math.PI;
+    group.add(peak);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(baseR * 0.42, height * 0.32, 7), snowMat);
+    cap.position.set(px, -60 + height * 0.84, pz);
+    cap.rotation.y = peak.rotation.y;
+    group.add(cap);
+    counts.mountains += 1;
+  }
+
+  scene.add(group);
+  return { group, counts };
+}
+
 // --- Clouds ------------------------------------------------------------------
 // Puffy low-poly clouds: clusters of white flattened spheres, drifting slowly
 // east. Unlit white, so they read as bright clouds against the sky instead

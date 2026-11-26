@@ -9,13 +9,13 @@ import { RUNWAY, clamp } from './config.js';
 import { FlightAudio } from './audio.js';
 import {
   buildTerrainMesh, buildWater, buildRunway, buildVegetation,
-  buildClouds, updateClouds, terrainHeightAt, meshHeightAt,
+  buildLandmarks, buildClouds, updateClouds, terrainHeightAt, meshHeightAt,
 } from './terrain.js';
 import { buildAircraft, Aircraft } from './aircraft.js';
 import { Controls } from './controls.js';
 import { Hud } from './hud.js';
 import { MissionManager } from './missions.js';
-import { createRenderer, buildSky, buildLights, buildFog, ChaseCamera } from './render.js';
+import { createRenderer, buildSky, buildLights, buildFog, ChaseCamera, CockpitCamera } from './render.js';
 
 // Game states: menu -> flying -> paused -> (done | crashed) -> flying again.
 const STATE = { MENU: 'menu', FLYING: 'flying', PAUSED: 'paused', DONE: 'done', CRASHED: 'crashed' };
@@ -35,6 +35,7 @@ const terrainMesh = buildTerrainMesh(scene);
 buildWater(scene);
 buildRunway(scene);
 const vegetation = buildVegetation(scene, terrainMesh);
+const landmarks = buildLandmarks(scene, terrainMesh);
 const clouds = buildClouds(scene);
 
 const aircraftMesh = buildAircraft();
@@ -44,6 +45,11 @@ const audio = new FlightAudio();
 const hud = new Hud(document.getElementById('hud'));
 const missions = new MissionManager(scene, audio, hud);
 const chase = new ChaseCamera(camera);
+const cockpit = new CockpitCamera(camera);
+// The view the pilot is flying from: 'chase' trails behind the aircraft,
+// 'cockpit' sits in the pilot's seat. Toggled with C; every sortie starts
+// in chase so the view is predictable, and the loop drives whichever is on.
+let cameraMode = 'chase';
 const controls = new Controls(canvas);
 
 let state = STATE.MENU;
@@ -74,7 +80,9 @@ function startSortie(n) {
     aircraft.placeInAir(RUNWAY.x, 150, RUNWAY.z - 1000, Math.PI, 52);
   }
   missions.startSortie(n, aircraft);
+  cameraMode = 'chase';
   chase.snap(aircraft);
+  cockpit.snap(aircraft);
   aircraft.syncMesh(0);
   state = STATE.FLYING;
   showScreen(null);
@@ -168,6 +176,15 @@ controls.onMusic = () => {
   const on = audio.toggleMusic();
   hud.showMessage(on ? 'MUSIC ON' : 'MUSIC OFF', 1.5);
 };
+controls.onCamera = () => {
+  if (state !== STATE.FLYING && state !== STATE.PAUSED) return;
+  cameraMode = cameraMode === 'chase' ? 'cockpit' : 'chase';
+  // Switching back to chase from the seat would otherwise lerp the camera
+  // across the world from the cockpit; snap it behind the aircraft at once.
+  if (cameraMode === 'chase') chase.snap(aircraft);
+  else cockpit.snap(aircraft);
+  hud.showMessage(cameraMode === 'cockpit' ? 'COCKPIT VIEW — C TO SWITCH' : 'CHASE VIEW — C TO SWITCH', 2.5);
+};
 controls.onStart = () => {
   if (state === STATE.MENU) {
     audio.ensure();
@@ -221,13 +238,15 @@ function frame(now) {
       sortie: missions.sortie,
     }, dt);
     updateClouds(clouds, elapsed);
-    chase.update(aircraft, dt);
+    if (cameraMode === 'cockpit') cockpit.update(aircraft);
+    else chase.update(aircraft, dt);
   } else if (state === STATE.MENU) {
     // Idle menu backdrop: slow orbit around the runway so the title screen
     // shows the valley, the strip and the parked aircraft.
     elapsed += dt;
     const a = elapsed * 0.045;
     camera.position.set(RUNWAY.x + Math.sin(a) * 260, 120, RUNWAY.z + Math.cos(a) * 260);
+    camera.up.set(0, 1, 0);
     camera.lookAt(RUNWAY.x, RUNWAY.height + 4, RUNWAY.z);
     updateClouds(clouds, elapsed);
     aircraft.syncMesh(elapsed);
@@ -241,15 +260,22 @@ function frame(now) {
 // renders one settled frame and stops the simulation. The game itself is
 // untouched for normal play; these hooks only run with the query present.
 
+function snapActiveCamera() {
+  if (cameraMode === 'cockpit') cockpit.snap(aircraft);
+  else chase.snap(aircraft);
+}
+
 function stageShot(mode) {
   shotMode = mode;
   if (mode === 'cover') {
     startSortie(1);
-    aircraft.throttle = 0.85;
-    aircraft.speed = 34;
-    aircraft.position.set(RUNWAY.x, RUNWAY.height + 6, RUNWAY.z + 130);
-    aircraft.pitch = 0.12;
-    chase.snap(aircraft);
+    // Climbing away from the strip, not rolling on it: the valley, the
+    // town, the bridge and the mountains fill the frame behind the aircraft
+    // instead of a slab of runway asphalt.
+    aircraft.throttle = 0.9;
+    aircraft.speed = 45;
+    aircraft.position.set(RUNWAY.x, RUNWAY.height + 45, RUNWAY.z + 60);
+    aircraft.pitch = 0.18;
   } else if (mode === 'ring') {
     startSortie(1);
     // Ring 1 sits over the runway corridor, which is kept clear of trees,
@@ -262,7 +288,6 @@ function stageShot(mode) {
     aircraft.throttle = 0.7;
     aircraft.airborne = true;
     aircraft.onGround = false;
-    chase.snap(aircraft);
   } else if (mode === 'low') {
     startSortie(2);
     // Low over the river in the wide southern valley (the channel at z=500
@@ -275,7 +300,6 @@ function stageShot(mode) {
     aircraft.throttle = 0.8;
     aircraft.airborne = true;
     aircraft.onGround = false;
-    chase.snap(aircraft);
   } else if (mode === 'land') {
     startSortie(3);
     aircraft.position.set(RUNWAY.x + 12, 50, RUNWAY.z - 300);
@@ -285,8 +309,12 @@ function stageShot(mode) {
     aircraft.throttle = 0.35;
     aircraft.airborne = true;
     aircraft.onGround = false;
-    chase.snap(aircraft);
   }
+  // ?cam=cockpit stages the shot from the pilot's seat (the ring shot uses
+  // it: nose, propeller and dashboard in frame, the ring dead ahead). This
+  // runs after startSortie, which resets the view to chase.
+  if (urlParams.get('cam') === 'cockpit') cameraMode = 'cockpit';
+  snapActiveCamera();
   aircraft.syncMesh(0);
   hud.update(aircraft, {
     name: missions.def.name,
@@ -297,6 +325,10 @@ function stageShot(mode) {
     ringsTotal: missions.ringsTotal,
     sortie: missions.sortie,
   }, 0);
+  // The sortie-start banner ("SORTIE 1 — Ring Run") sits in the middle of
+  // the frame; a screenshot with it reads as a captioned photo, not a game.
+  // Clear it for the staged frame only — real play keeps the banner.
+  hud.showMessage('', 0);
   renderer.render(scene, camera);
   // Freeze: stop the animation loop from advancing the world.
   state = STATE.PAUSED;
@@ -313,10 +345,17 @@ window.__skyward = {
   hud,
   audio,
   controls,
+  camera,
   terrainHeightAt,
   meshHeightAt,
   terrainMesh,
   vegetation,
+  landmarks,
+  cameraMode: () => cameraMode,
+  setCameraMode(mode) {
+    cameraMode = mode === 'cockpit' ? 'cockpit' : 'chase';
+    snapActiveCamera();
+  },
   startGame,
   startSortie,
   togglePause,

@@ -12,12 +12,13 @@ export class Controls {
     this.mouseX = 0;
     this.mouseY = 0;
     this.mouseDown = false;
-    // Callbacks the game wires up: pause, restart, music, start.
+    // Callbacks the game wires up: pause, restart, music, start, camera.
     this.onPause = null;
     this.onRestart = null;
     this.onMusic = null;
     this.onStart = null;
     this.onAnyKey = null;
+    this.onCamera = null;
     this.boundKeyDown = (e) => this.keyDown(e);
     this.boundKeyUp = (e) => this.keyUp(e);
     this.boundMouseMove = (e) => this.mouseMove(e);
@@ -58,6 +59,10 @@ export class Controls {
     }
     if (k === 'm' && !e.repeat) {
       if (this.onMusic) this.onMusic();
+      return;
+    }
+    if (k === 'c' && !e.repeat) {
+      if (this.onCamera) this.onCamera();
       return;
     }
     if (k === 'enter' && !e.repeat) {
