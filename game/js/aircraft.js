@@ -22,7 +22,15 @@ export function buildAircraft() {
   // Fuselage: a tapered box, nose forward.
   const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 6.4), orange);
   group.add(fuselage);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.6, 4), white);
+  // Nose: a tapered square frustum, open at both ends, instead of a cone.
+  // A cone's flat base cap faced the cockpit square-on and read as a
+  // grey-blue panel filling the centre of the view (it faces away from
+  // the sun, so it only ever caught the hemisphere light). Open-ended,
+  // the cap is gone: from the cockpit the pilot sees the frustum's top
+  // face sloping down-forward, which reads as the nose itself, while the
+  // fuselage front face closes the open base from outside and the
+  // propeller hub covers the small tip opening.
+  const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.75, 1.6, 4, 1, true), white);
   nose.rotation.x = -Math.PI / 2;
   nose.rotation.y = Math.PI / 4;
   nose.position.z = -4.0;
@@ -44,21 +52,43 @@ export function buildAircraft() {
   const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.5), dark);
   seat.position.set(0, 0.15, 0.4);
   group.add(seat);
-  // Smaller and lower than the first version: at 1.4 m wide it blocked the
-  // centre of the cockpit view; at 1.0 m it reads as a thin instrument
-  // strip along the bottom of the frame.
-  const dash = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.4, 0.25), dark);
-  dash.position.set(0, 0.2, -2.5);
-  group.add(dash);
+  // Dashboard, third version: the 1.0 x 0.4 m black box read as a traffic
+  // light nailed to the frame, and its sunlit top face added a grey strip.
+  // Now a slim panel, low and tilted back like a real glareshield, with
+  // three small ringed dials: a thin white ring, a glowing coloured face
+  // and a dark needle. It sits as an instrument strip along the bottom
+  // of the cockpit view instead of dominating it.
+  const dash = new THREE.Group();
+  dash.position.set(0, -0.05, -2.55);
+  dash.rotation.x = -0.3;
+  const dashPanel = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.16, 0.18), dark);
+  dash.add(dashPanel);
   const dialColours = [0xf2f2e8, 0xffd24a, 0x37c978];
+  const needleAngles = [-0.7, 0.15, 0.8];
   for (let i = 0; i < 3; i += 1) {
-    const dial = new THREE.Mesh(
-      new THREE.CircleGeometry(0.1, 12),
+    const dial = new THREE.Group();
+    dial.position.set(-0.35 + i * 0.35, 0, 0.095);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.05, 0.065, 20),
+      new THREE.MeshBasicMaterial({ color: 0xf2f2e8 }),
+    );
+    dial.add(ring);
+    const face = new THREE.Mesh(
+      new THREE.CircleGeometry(0.038, 16),
       new THREE.MeshBasicMaterial({ color: dialColours[i] }),
     );
-    dial.position.set(-0.28 + i * 0.28, 0.2, -2.36);
-    group.add(dial);
+    face.position.z = 0.001;
+    dial.add(face);
+    const needle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.008, 0.045, 0.004),
+      new THREE.MeshBasicMaterial({ color: 0x2e3138 }),
+    );
+    needle.position.set(0, 0.012, 0.003);
+    needle.rotation.z = needleAngles[i];
+    dial.add(needle);
+    dash.add(dial);
   }
+  group.add(dash);
   // Main wing: long, slightly tapered, with white tips.
   const wing = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.28, 2.0), white);
   wing.position.set(0, -0.15, -0.4);
@@ -76,16 +106,25 @@ export function buildAircraft() {
   fin.position.set(0, 1.05, 3.0);
   group.add(fin);
   // Propeller: a hub and two blades, spinning in the update. The blades
-  // are short, thin and faint: a full-size solid prop read as huge black
-  // bars sweeping the cockpit view. (A translucent blur disc was tried and
-  // removed — it read as a grey bubble over the whole frame.)
+  // were short, thin and faint at 4.0 m and still read as dark bars
+  // sweeping the cockpit view — a 4 m disc fills half the pilot's frame.
+  // Now shorter (3.0 m), narrower, pale grey and barely there (0.16):
+  // a spinning blur the pilot looks through, not bars across the ring.
+  // (A translucent blur disc was tried and removed — it read as a grey
+  // bubble over the whole frame.)
   const prop = new THREE.Group();
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.5, 8), dark);
-  hub.rotation.x = Math.PI / 2;
+  // Spinner: a small pale dome at the nose tip. The hub was a dark
+  // cylinder end-on, and with the cone cap gone it read as a black blob
+  // floating in the middle of the ring. A small pale sphere reads as the
+  // spinner — the nose tip itself, centred in the pilot's view — and it
+  // covers the frustum's small tip opening.
+  const hubMat = new THREE.MeshLambertMaterial({ color: 0xd8dde2 });
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), hubMat);
+  hub.position.z = 0.05;
   prop.add(hub);
-  const bladeMat = new THREE.MeshLambertMaterial({ color: 0x2e3138, transparent: true, opacity: 0.35 });
+  const bladeMat = new THREE.MeshLambertMaterial({ color: 0x9aa2ac, transparent: true, opacity: 0.16 });
   for (const a of [0, Math.PI / 2]) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.24, 4.0, 0.12), bladeMat);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.15, 3.0, 0.08), bladeMat);
     blade.rotation.z = a;
     prop.add(blade);
   }
