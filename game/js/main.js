@@ -9,7 +9,7 @@ import { RUNWAY, clamp } from './config.js';
 import { FlightAudio } from './audio.js';
 import {
   buildTerrainMesh, buildWater, buildRunway, buildVegetation,
-  buildClouds, updateClouds, terrainHeightAt,
+  buildClouds, updateClouds, terrainHeightAt, meshHeightAt,
 } from './terrain.js';
 import { buildAircraft, Aircraft } from './aircraft.js';
 import { Controls } from './controls.js';
@@ -31,10 +31,10 @@ const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerH
 buildFog(scene);
 buildSky(scene);
 buildLights(scene);
-buildTerrainMesh(scene);
+const terrainMesh = buildTerrainMesh(scene);
 buildWater(scene);
 buildRunway(scene);
-buildVegetation(scene);
+const vegetation = buildVegetation(scene, terrainMesh);
 const clouds = buildClouds(scene);
 
 const aircraftMesh = buildAircraft();
@@ -265,7 +265,10 @@ function stageShot(mode) {
     chase.snap(aircraft);
   } else if (mode === 'low') {
     startSortie(2);
-    aircraft.position.set(-150, 52, -300);
+    // Low over the river in the wide southern valley (the channel at z=500
+    // is x≈-95), looking north down the run: the winding river and its
+    // banks ahead, the first canyon ring dead ahead, green hills both sides.
+    aircraft.position.set(-140, 55, 500);
     aircraft.heading = 0;
     aircraft.pitch = 0.02;
     aircraft.speed = 72;
@@ -311,6 +314,9 @@ window.__skyward = {
   audio,
   controls,
   terrainHeightAt,
+  meshHeightAt,
+  terrainMesh,
+  vegetation,
   startGame,
   startSortie,
   togglePause,

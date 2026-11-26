@@ -16,11 +16,17 @@ export function terrainHeightAt(x, z) {
   let h = fbm2D(nx + 3.7, nz + 9.1, WORLD_SEED) * WORLD.maxHeight;
   const edge = Math.max(Math.abs(x), Math.abs(z)) / half;
   h += Math.max(0, edge - 0.55) * 260;
-  // River carve: a smooth valley along a gently winding line.
+  // River carve: a flat-bottomed valley along a gently winding line. The
+  // channel floor stays at the waterline for the first ~14 m, then rises
+  // linearly to the banks, so the river reads as a narrow channel with
+  // visible banks instead of a dry V-valley whose water sits below its bed.
+  // Linear banks, not a smoothstep: the smoothstep's mid-slope topped 0.55
+  // and turned the whole valley rock-brown; linear keeps the banks grass.
   const riverCentre = WORLD.riverX + Math.sin(z * 0.0016) * 90;
   const riverDist = Math.abs(x - riverCentre);
-  const carve = Math.max(0, 1 - riverDist / (WORLD.riverWidth * 2.2));
-  h = lerp(h, 2, carve * carve * 0.92);
+  const carveU = clamp((riverDist - 14) / (WORLD.riverWidth * 2.2 - 14), 0, 1);
+  const carve = 1 - carveU;
+  h = lerp(h, 1.0, carve * 0.98);
   // Lake bowl at the north end of the river.
   const lakeDist = Math.hypot(x - WORLD.riverX, z - WORLD.lakeZ);
   const lakeCarve = Math.max(0, 1 - lakeDist / WORLD.lakeRadius);
@@ -38,6 +44,40 @@ export function terrainHeightAt(x, z) {
   const corridor = corridorX * corridorZ;
   h = lerp(h, RUNWAY.height, clamp(corridor * 2.2, 0, 1));
   return h;
+}
+
+// --- Sampling the rendered mesh -------------------------------------------
+// The analytic terrainHeightAt and the mesh disagree by up to a few metres
+// on steep ground (the mesh is a 20 m grid, the formula is smooth), which is
+// what left trees floating. Vegetation must be planted on the mesh, not the
+// formula, so sample the mesh's own triangles: the PlaneGeometry is a
+// regular grid, each quad split on the (i,j)-(i+1,j+1) diagonal, and the
+// heights come straight from its displaced vertices.
+let meshGrid = null; // { heights, step, half, n }
+
+export function sampleMeshHeight(mesh) {
+  const pos = mesh.geometry.attributes.position;
+  const n = Math.round(Math.sqrt(pos.count));
+  const heights = new Float32Array(n * n);
+  for (let k = 0; k < n * n; k += 1) heights[k] = pos.getY(k);
+  meshGrid = { heights, step: WORLD.size / (n - 1), half: WORLD.half, n };
+}
+
+export function meshHeightAt(x, z) {
+  const g = meshGrid;
+  if (!g) return terrainHeightAt(x, z);
+  const fx = clamp((x + g.half) / g.step, 0, g.n - 1.001);
+  const fz = clamp((z + g.half) / g.step, 0, g.n - 1.001);
+  const i = Math.floor(fx);
+  const j = Math.floor(fz);
+  const u = fx - i;
+  const v = fz - j;
+  const h00 = g.heights[j * g.n + i];
+  const h10 = g.heights[j * g.n + i + 1];
+  const h11 = g.heights[(j + 1) * g.n + i + 1];
+  const h01 = g.heights[(j + 1) * g.n + i];
+  if (u + v <= 1) return h00 + u * (h10 - h00) + v * (h01 - h00);
+  return h11 + (1 - u) * (h01 - h11) + (1 - v) * (h10 - h11);
 }
 
 // The terrain is one big PlaneGeometry, displaced by terrainHeightAt and
@@ -82,19 +122,24 @@ export function buildTerrainMesh(scene) {
   return mesh;
 }
 
-// Water: a flat blue plane for the river strip and a disc for the lake, both
-// slightly transparent so the sand bed shows through at the edges.
+// Water: a ribbon of short flat segments following the winding river
+// carve, plus a disc for the lake, both slightly transparent so the sandy
+// bed shows through at the edges. The ribbon follows the carve's centre
+// line, so the water stays in the valley instead of a straight strip the
+// river wanders away from.
 export function buildWater(scene) {
   const waterMat = new THREE.MeshLambertMaterial({
-    color: 0x2f7fc4, transparent: true, opacity: 0.82,
+    color: 0x2568a8, transparent: true, opacity: 0.9,
   });
-  const river = new THREE.Mesh(
-    new THREE.PlaneGeometry(WORLD.riverWidth * 1.7, WORLD.size),
-    waterMat,
-  );
-  river.rotation.x = -Math.PI / 2;
-  river.position.set(WORLD.riverX, 3.2, 0);
-  scene.add(river);
+  const segLen = 44;
+  const segGeo = new THREE.PlaneGeometry(110, segLen);
+  for (let z = -WORLD.half; z <= WORLD.half; z += segLen * 0.9) {
+    const riverCentre = WORLD.riverX + Math.sin(z * 0.0016) * 90;
+    const seg = new THREE.Mesh(segGeo, waterMat);
+    seg.rotation.x = -Math.PI / 2;
+    seg.position.set(riverCentre, 3.1, z);
+    scene.add(seg);
+  }
   const lake = new THREE.Mesh(
     new THREE.CircleGeometry(WORLD.lakeRadius * 0.94, 40),
     waterMat,
@@ -153,8 +198,9 @@ export function buildRunway(scene) {
 // Instanced meshes keep the draw calls low: one cone+cylinder pair per tree
 // shape, one dodecahedron per rock, all placed by the seeded stream.
 
-export function buildVegetation(scene) {
+export function buildVegetation(scene, terrainMesh) {
   const rng = mulberry32(WORLD_SEED + 501);
+  if (terrainMesh) sampleMeshHeight(terrainMesh);
   // Keep the sightlines to the sky rings clear: no tree within 45 m of a
   // ring centre on either sortie's path, or a ring hides behind a pine.
   const ringClearings = [...ringPathForSortie(1), ...ringPathForSortie(2)];
@@ -169,7 +215,7 @@ export function buildVegetation(scene) {
   const dummy = new THREE.Object3D();
   let placed = 0;
   let guard = 0;
-  while (placed < treeCount && guard < 4000) {
+  while (placed < treeCount && guard < 20000) {
     guard += 1;
     const x = (rng() * 2 - 1) * (WORLD.half - 60);
     const z = (rng() * 2 - 1) * (WORLD.half - 60);
@@ -179,14 +225,24 @@ export function buildVegetation(scene) {
     if (Math.abs(x - RUNWAY.x) < 70 && Math.abs(z - RUNWAY.z) < 1050) continue;
     if (nearRing(x, z)) continue;
     const riverCentre = WORLD.riverX + Math.sin(z * 0.0016) * 90;
-    if (Math.abs(x - riverCentre) < WORLD.riverWidth) continue;
+    if (Math.abs(x - riverCentre) < WORLD.riverWidth * 1.6) continue;
+    // Plant on the rendered mesh, not the formula, and reject ground too
+    // steep for a trunk to sit on: on a steep bank one side of the trunk
+    // floats while the other buries. Sink the base a little so any small
+    // mismatch buries the trunk instead of floating it.
+    const mh = meshHeightAt(x, z);
+    const slope = Math.max(
+      Math.abs(meshHeightAt(x + 6, z) - meshHeightAt(x - 6, z)) / 12,
+      Math.abs(meshHeightAt(x, z + 6) - meshHeightAt(x, z - 6)) / 12,
+    );
+    if (slope > 0.55) continue;
     const s = 0.7 + rng() * 0.9;
-    dummy.position.set(x, h + 2.5 * s, z);
+    dummy.position.set(x, mh - 0.7 * s + 2.5 * s, z);
     dummy.scale.setScalar(s);
     dummy.rotation.y = rng() * Math.PI * 2;
     dummy.updateMatrix();
     trunks.setMatrixAt(placed, dummy.matrix);
-    dummy.position.y = h + (5 + 6.5) * s;
+    dummy.position.y = mh - 0.7 * s + (5 + 6.5) * s;
     dummy.updateMatrix();
     crowns.setMatrixAt(placed, dummy.matrix);
     placed += 1;
@@ -196,34 +252,45 @@ export function buildVegetation(scene) {
   scene.add(trunks);
   scene.add(crowns);
 
-  // Rocks: grey dodecahedrons, mostly on the high slopes.
+  // Rocks: grey dodecahedrons, mostly on the high slopes. Planted on the
+  // mesh and sunk well in, so they read as half-buried boulders, never as
+  // stones floating above a slope.
   const rockCount = 160;
   const rockGeo = new THREE.DodecahedronGeometry(3.2, 0);
   const rockMat = new THREE.MeshLambertMaterial({ color: 0x7d7a72 });
   const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
-  for (let i = 0; i < rockCount; i += 1) {
+  let rocksPlaced = 0;
+  let rockGuard = 0;
+  while (rocksPlaced < rockCount && rockGuard < 4000) {
+    rockGuard += 1;
     const x = (rng() * 2 - 1) * (WORLD.half - 80);
     const z = (rng() * 2 - 1) * (WORLD.half - 80);
-    const h = terrainHeightAt(x, z);
+    // Keep the runway and its approach corridor clear: a boulder on the
+    // strip reads as debris on the runway.
+    if (Math.abs(x - RUNWAY.x) < 70 && Math.abs(z - RUNWAY.z) < 1050) continue;
+    const h = meshHeightAt(x, z);
     const s = 0.5 + rng() * 1.6;
-    dummy.position.set(x, h + 1.2 * s, z);
+    dummy.position.set(x, h + 0.4 * s, z);
     dummy.scale.set(s, s * 0.7, s);
     dummy.rotation.set(rng() * 3, rng() * 3, rng() * 3);
     dummy.updateMatrix();
-    rocks.setMatrixAt(i, dummy.matrix);
+    rocks.setMatrixAt(rocksPlaced, dummy.matrix);
+    rocksPlaced += 1;
   }
+  rocks.count = rocksPlaced;
   scene.add(rocks);
-  return { trees: placed, rocks: rockCount };
+  return { trees: placed, rocks: rocksPlaced };
 }
 
 // --- Clouds ------------------------------------------------------------------
 // Puffy low-poly clouds: clusters of white flattened spheres, drifting slowly
-// east. Positions are seeded; the drift is a pure function of elapsed time.
-
+// east. Unlit white, so they read as bright clouds against the sky instead
+// of dark smudges: Lambert shading left their shaded sides almost black.
+// Positions are seeded; the drift is a pure function of elapsed time.
 export function buildClouds(scene) {
   const rng = mulberry32(WORLD_SEED + 909);
   const group = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.88 });
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.92 });
   const geo = new THREE.SphereGeometry(1, 10, 8);
   const clouds = [];
   for (let i = 0; i < 26; i += 1) {
